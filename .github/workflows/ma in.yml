@@ -1,0 +1,62 @@
+# GitHub Actions Workflow: Windows RDP using Pinggy Tunnel
+# NOTE: This uses the standard 'windows-latest' runner (approx. 7GB RAM, NO GPU).
+# The job is set to run for 6 hours (max duration).
+
+name: 💻 RDP Session via Pinggy Tunnel
+
+on:
+  # Allows manual execution
+  workflow_dispatch:
+
+jobs:
+  rdp-session-pinggy:
+    runs-on: windows-latest
+
+    steps:
+      - name: 🔒 Define RDP Credentials and Tunnel Port
+        # Define a fixed RDP password for connection simplicity
+        run: |
+          echo "RDP_PASSWORD=SimpleAccessKey99!" >> $env:GITHUB_ENV
+          echo "RDP_PORT=3389" >> $env:GITHUB_ENV
+        shell: powershell
+
+      - name: ⚙️ Configure Windows RDP
+        # Create user 'RDPUser' and enable Remote Desktop
+        run: |
+          Write-Host "Configuring RDP access..."
+          net user /add RDPUser ${{ env.RDP_PASSWORD }}
+          # Give RDPUser full administrative rights
+          net localgroup administrators RDPUser /add
+          net localgroup "Remote Desktop Users" RDPUser /add
+          # Enable RDP connection registry setting
+          Set-ItemProperty -Path "HKLM:\SYSTEM\CurrentControlSet\Control\Terminal Server" -Name "fDenyTSConnections" -Value 0
+          Write-Host "RDP is now enabled on port 3389."
+        shell: powershell
+
+      - name: 🌐 Start Pinggy TCP Tunnel for RDP
+        # Download and run the Pinggy tunnel client (using a persistent address)
+        # This uses the default RDP port (3389)
+        run: |
+          Write-Host "Starting Pinggy Tunnel for RDP..."
+          # Download the Pinggy client
+          Invoke-WebRequest -Uri https://pinggy.io/downloads/pinggy-windows-amd64.exe -OutFile pinggy.exe
+          
+          # Start the TCP tunnel for RDP and keep the job running
+          # NOTE: Pinggy offers persistent URLs, which is better than ngrok's random ones.
+          # You must replace 'YOUR_TUNNEL_ID_HERE' with a unique ID you register on pinggy.io.
+          # The wait time keeps the session alive for 6 hours (21600 seconds).
+          ./pinggy.exe --tcp-port ${{ env.RDP_PORT }} --id YOUR_TUNNEL_ID_HERE --duration 21600
+        shell: powershell
+
+      - name: 📢 RDP Connection Details
+        # This step will only run if the previous step (the tunnel) fails, but it ensures the job doesn't end immediately.
+        if: always()
+        run: |
+          Write-Host "--------------------------------------------------------"
+          Write-Host "RDP Tunnel is now active. Check the log output from the 'Start Pinggy TCP Tunnel' step above."
+          Write-Host "Look for the public IP:PORT address provided by Pinggy."
+          Write-Host "Connect using:"
+          Write-Host "Username: RDPUser"
+          Write-Host "Password: ${{ env.RDP_PASSWORD }}"
+          Write-Host "--------------------------------------------------------"
+        shell: powershell
