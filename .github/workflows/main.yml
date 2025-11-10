@@ -1,0 +1,54 @@
+# GitHub Actions Workflow: Free Windows RDP Session (No GPU)
+# IMPORTANT: This uses the standard GitHub-hosted 'windows-latest' runner, which DOES NOT include an RTX or any GPU.
+# The maximum job duration is 6 hours, but continuous RDP access stability and total free minutes may limit use.
+
+name: 💻 Free Windows RDP Session (No GPU)
+
+on:
+  # Allows you to trigger the workflow manually from the GitHub Actions tab
+  workflow_dispatch:
+
+jobs:
+  rdp-session:
+    # Use the latest Windows runner, which provides admin-level access
+    runs-on: windows-latest
+
+    steps:
+      - name: 🔒 Checkout Repository (Optional but recommended)
+        uses: actions/checkout@v4
+
+      - name: ⚙️ Setup Environment Variables
+        # Define a default RDP password for secure connection
+        run: |
+          echo "RDP_PASSWORD=yourStrongPassword123!" >> $env:GITHUB_ENV
+        shell: powershell
+
+      - name: 🔑 Configure & Start Ngrok Tunnel for RDP
+        # This step uses a free tunneling service (ngrok) to expose the runner's RDP port (3389)
+        # We use a long wait time (21600 seconds = 6 hours) to keep the runner alive.
+        uses: lsp2095/ngrok-tunnel-action@v1
+        with:
+          # IMPORTANT: Replace 'YOUR_NGROK_AUTH_TOKEN_HERE' with a free token from ngrok.com
+          ngrok_auth_token: ${{ secrets.NGROK_AUTH_TOKEN }}
+          server_port: 3389
+          # Set the duration to 6 hours (maximum for a GitHub-hosted job)
+          wait_time: 21600
+
+      - name: 💻 Configure Windows RDP Access
+        # Create a new user (RDPUser) and set the pre-defined strong password
+        # Then, enable the Remote Desktop service
+        run: |
+          net user /add RDPUser ${{ env.RDP_PASSWORD }}
+          net localgroup administrators RDPUser /add
+          net localgroup "Remote Desktop Users" RDPUser /add
+          Set-ItemProperty -Path "HKLM:\SYSTEM\CurrentControlSet\Control\Terminal Server" -Name "fDenyTSConnections" -Value 0
+          Write-Host "RDP Access is now enabled and configured."
+        shell: powershell
+
+      - name: ⏱️ Keep Session Alive for 6 Hours
+        # This step uses the 'sleep' command to hold the workflow open.
+        # It will stay open until 6 hours pass OR the ngrok tunnel is closed.
+        run: |
+          Write-Host "Waiting for 6 hours (21600 seconds). Your RDP session is active now."
+          Start-Sleep -Seconds 21600
+        shell: powershell
